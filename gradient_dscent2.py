@@ -1,6 +1,6 @@
 import numpy as np
 import random
-import matlplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 
 class GradientDescent():
@@ -31,14 +31,14 @@ class GradientDescent():
             raise ValueError('learning_rate parameter must be > 0. Here {}.'.format(learning_rate))
         self.learning_rate = learning_rate
         self.regularize = regularize
-        self.lamda = 0
+        self.lambd = 0
         self.alpha = 0
         self.normalize = normalize
         
         
         if self.regularize:    
             self.epsilon = 1e-10
-            if self.regularize == 'rigde':
+            if self.regularize == 'ridge':
                 self.alpha = 0
             elif self.regularize == 'lasso':
                 self.alpha = 1
@@ -48,7 +48,7 @@ class GradientDescent():
                 raise ValueError("le parametre 'regularize' ne peut prendre que : 'False', 'ridge', 'lasso', 'elasticNet'")
         else:
             self.epsilon = 1e-8
-            self.lamda = 0
+            self.lambd = 0
             self.alpha = 0
     
     def predict(self, new_features):
@@ -74,7 +74,7 @@ class GradientDescent():
         return self.hypothesis(new_features, self.parameters_)
     
     
-    def fit(self, features, label, parameters=None):
+    def fit(self, features, label, parameters=None, lambd=0, alpha=0):
         """Find the optimal parameters
         
         Parametres
@@ -102,24 +102,38 @@ class GradientDescent():
         predictions = self.hypothesis(features, parameters)
         
         # solve depending of the regularization or not
-        self.parameters_ = self._fit(features, label, parameters, predictions)
+        self.parameters_ = self._fit(features, label, parameters, predictions, self.lambd, self.alpha)
 
     
-    def _fit(self, features, label, parameters, predictions):
+    def _fit(self, features, label, parameters, predictions, lambd, alpha):
         """Trouver les paramètres optimaux
         """
 
         m = features.shape[0]
+   
+        if self.regularize == 'rigde':
+            self.lambd = lambd
+            if self.alpha != 0 :
+                raise ValueError("Le parametre 'alpha' ne concerne pas la regularisation Ridge")
+            
+        elif self.regularize == 'lasso':
+            self.lambd = lambd
+            if self.alpha != 1:
+                raise ValueError("Le parametre 'alpha' ne concerne pas la regularisation Lasso")
+                
+        elif self.regularize == 'elasticNet':
+            self.alpha = alpha
+            self.lambd = lambd
 
-        
+    
         
         costFct = 0
         costFctEvol = []
         count = 0
-        while self.testCostFct(predictions, label, self.lamda, self.alpha, parameters, costFct, self.epsilon):
+        while self.testCostFct(predictions, label, self.lambd, self.alpha, parameters, costFct, self.epsilon):
             count += 1
-            costFct = self.costFunction(predictions, label, self.lamda, self.alpha, parameters)
-            grads = self.gradients(predictions, label, features, self.lamda, self.alpha, parameters)
+            costFct = self.costFunction(predictions, label, self.lambd, self.alpha, parameters)
+            grads = self.gradients(predictions, label, features, self.lambd, self.alpha, parameters)
             parameters = self.updateParameters(parameters, grads, self.learning_rate)
             predictions = self.hypothesis(features, parameters)
             costFctEvol.append(costFct)
@@ -145,25 +159,25 @@ class GradientDescent():
         """Fonction de coût
         """
         return np.square(yhat - y).sum() / (2*y.shape[0])
-    def costFunction(self, yhat, y, lamda, alpha, theta):
+    def costFunction(self, yhat, y, lambd, alpha, theta):
         """Fonction de coût avec ou sans régularisée selon les parametres.
         """
-        return self._costFunction(yhat, y) + lamda*(((1-alpha)/2) * np.square(theta).sum() + alpha*(np.abs(theta)).sum())
+        return self._costFunction(yhat, y) + lambd*(((1-alpha)/2) * np.square(theta).sum() + alpha*(np.abs(theta)).sum())
     
 
 
-    def gradients(self, yhat, y, x, lamda ,alpha , theta):
+    def gradients(self, yhat, y, x, lambd ,alpha , theta):
         """Dérivée de la fonction de coût
         """
 
-        return (((yhat - y) * x).sum(axis=0) / x.shape[0]).reshape(x.shape[1],1) + (lamda*(1-alpha))/x.shape[0]*theta
+        return (((yhat - y) * x).sum(axis=0) / x.shape[0]).reshape(x.shape[1],1) + (lambd*(1-alpha))/x.shape[0]*theta
     
     def updateParameters(self, parameters, grads, learning_rate):
         """Gradient descent: mise à jour des paramètres
         """
         return parameters - learning_rate * grads
     
-    def testCostFct(self, yhat, y, lamda, alpha, theta, prevCostFct, epsilon):
+    def testCostFct(self, yhat, y, lambd, alpha, theta, prevCostFct, epsilon):
         """ Fonction pour tester l'évolution de la fonction de coût régularisée
             
             Returns
@@ -171,7 +185,8 @@ class GradientDescent():
             test : bool
                 vrai = continuer la descente de gradient
         """
-        return np.abs(self.costFunction(yhat, y, lamda, alpha, theta) - prevCostFct) >= epsilon*prevCostFct
+        return np.abs(self.costFunction(yhat, y, lambd, alpha, theta) - prevCostFct) >= epsilon*prevCostFct
+        
     
     def train_test_split(self, X, y, ratio=0.3, random_seed = 42):
         """ Fonction pour subdiviser les donnees en donnees d'entrainement et donnees de test.
@@ -284,5 +299,146 @@ class GradientDescent():
             
         """
         return np.array((X - X.mean(axis=0)) / (X.std(axis=0)))
+    def standardScaler(self, X):
+        
+        """ Fonction determiner le score Coefficient de determination R2.
+        
+             Parametres
+            ----------
+            X : matrice de flottants.
+                les donnees d'entrainements a normaliser.
+            
+            Returns
+            -------
+             X : matrice de flottants.
+                les donnees normalisees ( centrees reduites ).
+            
+        """
+        return np.array((X - X.mean(axis=0)) / (X.std(axis=0)))
+    
+    def tunning(self,X,y,scoring,nb_params=10, validation_ratio = 0.3):
+        """Ce module determine les hyperparametres optimale de regularisations 
+    
+        Parametres
+        ----------
+            X : matrice de flottants.
+                les features des donnees d'entrainements.
+            y: vecteur de flottants.
+                les features des donnees d'entrainements.
+            scoring : Le type de scoring pour evaluer les hyperparametres
+                valeurs possible ('mae', 'rmse', 'r2_score')
+            nb_params : Entier
+                le nombre de hyperparamtres a tester
+            validation_ratio : Flottant
+                le ratio du validation set.
+    
+        """
+        if self.regularize == False:    
+            raise ValueError("Les hyperparametre de penalite s'applique uniquement sur une descent de gradient regularisee")
+        else:
+            if scoring not in ['rmse','mae','r2_score']:
+                   raise ValueError("valeurs possible pour le scoring : 'mae', 'rmse', 'r2_score' ")
+            a_tester = np.arange(0.01,1,round(1/nb_params, 2))
+            X_train, y_train, X_validate, y_validate = g.train_test_split(X,y,ratio=validation_ratio)
+            if self.regularize == 'ridge' or self.regularize == 'lasso':
+               
+                
+                if scoring == "rmse":
+                    best_score = 9e100
+                    best_param = 0
+    
+                    for i in a_tester:
+                        g.fit(X_train,y_train, lambd = i)
+                        y_pred = g.predict(X_validate)
+
+                        if scoring == "rmse":
+                            score = g.rmse(y_pred, y_validate)
+                            if score < best_score:
+                                best_score = score
+                                best_param = i
+                    print("Le meilleur parametre de penalite lambda pour le ridge est : ",best_param)
+                    
+                elif scoring == "mae":
+                    best_score = 9e100
+                    best_param = 0
+    
+                    for i in a_tester:
+                        g.fit(X_train,y_train, lambd = i)
+                        y_pred = g.predict(X_validate)
+
+                        if scoring == "mae":
+                            score = g.mae(y_pred, y_validate)
+                            if score < best_score:
+                                best_score = score
+                                best_param = i
+                    print("Le meilleur parametre de penalite lambda pour le ridge est : ",best_param)
+                    
+                elif scoring == "r2":
+                    best_score = 0
+                    best_param = 0
+    
+                    for i in a_tester:
+                        g.fit(X_train,y_train, lambd = i)
+                        y_pred = g.predict(X_validate)
+
+                        if scoring == "mae":
+                            score = g.r2_score(y_pred, y_validate)
+                            if score > best_score:
+                                best_score = score
+                                best_param = i
+                    print("Le meilleur parametre de penalite lambda pour le ridge est : ",best_param)
+                    
+            elif self.regularize == 'elasticNet':
+                
+                if scoring == "rmse":
+                    best_score = 9e100
+                    best_param = 0
+    
+                    for i in a_tester:
+                        for j in a_tester:
+                            g.fit(X_train,y_train, lambd = i, alpha = j)
+                            y_pred = g.predict(X_validate)
+
+                            if scoring == "rmse":
+                                score = g.rmse(y_pred, y_validate)
+                                if score < best_score:
+                                    best_score = score
+                                    best_param = i
+                    print("Le meilleur parametre de penalite la regularisation le Ridge est : lambda = ",best_param)
+                    
+                elif scoring == "mae":
+                    best_score = 9e100
+                    best_param = 0
+    
+                    for i in a_tester:
+                        for j in a_tester:
+                            g.fit(X_train,y_train, lambd = i, alpha = j)
+                            y_pred = g.predict(X_validate)
+
+                            if scoring == "mae":
+                                score = g.mae(y_pred, y_validate)
+                                if score < best_score:
+                                    best_score = score
+                                    best_param = i
+                    print("Le meilleur parametre de penalite la regularisation le Lasso est : lambda = ",best_param)
+                    
+                elif scoring == "r2":
+                    best_score = 0
+                    best_param = 0 , 0
+    
+                    for i in a_tester:
+                        for j in a_tester:
+                            g.fit(X_train,y_train, lambd = i, alpha = j)
+                            y_pred = g.predict(X_validate)
+
+                            if scoring == "r2":
+                                score = g.r2_score(y_pred, y_validate)
+                                if score > best_score:
+                                    best_score = score
+                                    best_param = i , j
+                    print("Le meilleur parametre de penalite pour la regularisation elasticNet sont : lambda = ",best_param[0],", alpha = ",best_param[1])
+
+    
+    
                         
         
