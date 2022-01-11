@@ -1,0 +1,9 @@
+README.md
+setup.py
+gradient_descent.egg-info/PKG-INFO
+gradient_descent.egg-info/SOURCES.txt
+gradient_descent.egg-info/dependency_links.txt
+gradient_descent.egg-info/requires.txt
+gradient_descent.egg-info/top_level.txt
+src/__init__.py
+src/gradient_descent.py
